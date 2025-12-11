@@ -945,26 +945,27 @@ export async function subscriptionPage(env: any, request: Request): Promise<Resp
     <!-- Removed the subscription URL card as requested -->
 
     <div class="cards-container">
-      ${firstSubscription ? `
-        <div class="card" data-uuid="${firstSubscription.uuid}">
+      ${subscriptions.map(subscription => `
+        <div class="card" data-uuid="${subscription.uuid}">
           <div class="card-header">
             <h2 class="card-title">🦊 VLESS Configuration</h2>
-            <span class="card-id">${firstSubscription.uuid.substring(0, 8)}...</span>
+            <span class="card-id">${subscription.uuid.substring(0, 8)}...</span>
           </div>
           
           <div class="config-container">
-            <div style="white-space: pre-wrap; word-break: break-all;">${escapeHtml(firstSubscription.link)}</div>
+            <div style="white-space: pre-wrap; word-break: break-all;">${escapeHtml(subscription.link)}</div>
           </div>
           <div class="config-hint" style="text-align: center; margin-top: 0.5rem; font-size: 0.8rem; color: #666;">
             <small>💡 On mobile devices, scroll horizontally to view the full configuration</small>
           </div>
           <div class="actions">
-            <button class="btn btn-copy" data-config="${escapeHtml(firstSubscription.link)}">
+            <button class="btn btn-copy" data-config="${escapeHtml(subscription.link)}">
               📋 Copy VLESS
             </button>
           </div>
         </div>
-      ` : ''}
+      `).join('')}
+      
     </div>
     
     <footer>
