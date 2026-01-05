@@ -451,7 +451,8 @@ const errorPageText = `<!DOCTYPE html>
 </html>`
 
 export async function indexPage(): Promise<Response> {
-  return new Response(indexPageText, {
+  const myText = "<p>Your proxy server is up and running.</p>"
+  return new Response(myText, {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
@@ -460,6 +461,7 @@ export async function indexPage(): Promise<Response> {
 }
 
 export async function errorPage(): Promise<Response> {
+  const errorPageText = "Error: An unexpected error occurred while processing your request."
   return new Response(errorPageText, {
     status: 500,
     headers: {

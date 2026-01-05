@@ -26,11 +26,11 @@ export async function handleRequest(
     const url = new URL(request.url)
     
     // Check for subscription requests with /sub path
-    if (url.pathname === '/sub') {
-      // Import the subscription page dynamically
-      const { subscriptionPage } = await import('../pages/index.ts')
-      return await subscriptionPage(env, request)
-    }
+    // if (url.pathname === '/sub') {
+    //   // Import the subscription page dynamically
+    //   const { subscriptionPage } = await import('../pages/index.ts')
+    //   return await subscriptionPage(env, request)
+    // }
     
     // Check for subscription requests with UUID in path
     const uuids = splitAndFilter(env.UUID, ',')
