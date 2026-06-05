@@ -1,14 +1,12 @@
 import { processHeader } from '../protocols/index'
 import { processTCP } from './tcp'
-import { safeCloseWebSocket } from '../utils/helpers'
 import { processDNS } from './dns'
+import { WebSocketTransport } from './ws-transport'
 
 import type { Env } from '../core/types'
 
 /**
  * Decodes early data from base64url encoding
- * @param earlyData - Base64url encoded string
- * @returns Decoded ArrayBuffer
  */
 function decodeEarlyData(earlyData: string): ArrayBuffer {
   earlyData = earlyData.replace(/-/g, '+').replace(/_/g, '/')
@@ -22,10 +20,7 @@ function decodeEarlyData(earlyData: string): ArrayBuffer {
 }
 
 /**
- * Gets the initial header from WebSocket connection
- * @param ws - WebSocket connection
- * @param earlyData - Early data from Sec-WebSocket-Protocol header
- * @returns Promise resolving to ArrayBuffer of header data
+ * Waits for the first message from the WebSocket (or uses early data if present)
  */
 function getHeader(
   ws: WebSocket,
@@ -34,26 +29,34 @@ function getHeader(
   return new Promise((resolve, reject) => {
     if (earlyData) {
       try {
-        const data = decodeEarlyData(earlyData)
-        resolve(data)
+        resolve(decodeEarlyData(earlyData))
+        return
       } catch (err) {
         reject(err)
+        return
       }
     }
 
-    const handleMsg = (event: MessageEvent) => {
-      if (typeof event.data === 'string') {
-        reject('invalid data')
-      } else {
-        resolve(event.data)
-      }
+    const handleMsg = async (event: MessageEvent) => {
       ws.removeEventListener('message', handleMsg)
       ws.removeEventListener('error', handleErr)
+      if (typeof event.data === 'string') {
+        reject('invalid data: string received, expected binary')
+        return
+      }
+      // Cloudflare Workers can deliver messages as Blob — normalize to ArrayBuffer
+      if (event.data instanceof ArrayBuffer) {
+        resolve(event.data)
+      } else if (event.data instanceof Blob) {
+        resolve(await event.data.arrayBuffer())
+      } else {
+        reject('invalid data: unknown type')
+      }
     }
 
     const handleErr = (event: Event) => {
-      // @ts-ignore
-      reject(event.error || 'WebSocket error')
+     
+      reject((event as ErrorEvent).error ?? 'WebSocket error')
       ws.removeEventListener('message', handleMsg)
       ws.removeEventListener('error', handleErr)
     }
@@ -70,41 +73,37 @@ function getHeader(
 }
 
 /**
- * Processes incoming WebSocket connections
- * @param request - Incoming request
- * @param env - Environment variables
- * @returns Response with WebSocket upgrade
+ * Processes incoming WebSocket connections (legacy transport, kept for
+ * backwards compatibility with existing deployed configs)
  */
 export function processWebSocket(request: Request, env: Env): Response {
   const uuids = env.UUID.split(',').filter((v) => v !== '')
   const proxyIPs = env.PROXY_IP.split(',').filter((v) => v !== '')
 
   const [client, server] = Object.values(new WebSocketPair())
-  if (server === undefined) {
-    throw 'WebSocket server not defined'
-  }
-  if (client === undefined) {
-    throw 'WebSocket client not defined'
-  }
+  if (!server) throw 'WebSocket server not defined'
+  if (!client) throw 'WebSocket client not defined'
 
   server.accept()
+
+  const transport = new WebSocketTransport(server)
 
   getHeader(server, request.headers.get('Sec-WebSocket-Protocol'))
     .then((v) => processHeader(v, uuids))
     .then(async (header) => {
       if (header.isUDP) {
         if (header.port === 53) {
-          await processDNS(server, header)
+          await processDNS(transport, header)
         } else {
-          throw Error('UDP transport is unsupported')
+          throw new Error('UDP transport is unsupported')
         }
+      } else {
+        await processTCP(transport, header, proxyIPs)
       }
-
-      await processTCP(server, header, proxyIPs)
     })
     .catch((err) => {
-      console.error(err)
-      safeCloseWebSocket(server)
+      console.error('WebSocket session error:', err)
+      transport.close()
     })
 
   return new Response(null, {
